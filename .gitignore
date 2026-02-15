@@ -1,0 +1,60 @@
+# Global
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+*.iml
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backend-specific
+backend/node_modules/
+backend/dist/
+backend/build/
+
+# Frontend-specific
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Database backups
+*.sql
+!database/schema.sql
+!database/seed.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Package manager
+package-lock.json
+yarn.lock
+
+# OS specific
+.env.local.*.backup
