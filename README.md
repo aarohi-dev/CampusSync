@@ -444,3 +444,4 @@ For issues and questions, please create an issue in the repository or contact th
 ---
 
 **Built with ❤️ for Campus Sync**
+Contributor: Arya Singh Vishen
