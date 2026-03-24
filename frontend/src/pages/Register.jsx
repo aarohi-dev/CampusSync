@@ -8,7 +8,7 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'STUDENT',
+    role: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,6 +43,7 @@ const Register = () => {
       const response = await authAPI.register(
         formData.name,
         formData.email,
+        formData.role,
         formData.password,
         formData.confirmPassword
       );
@@ -123,6 +124,7 @@ const Register = () => {
             >
               <option value="STUDENT">Student</option>
               <option value="FACULTY">Faculty</option>
+              <option value="ADMIN">Admin</option>
             </select>
           </div>
 

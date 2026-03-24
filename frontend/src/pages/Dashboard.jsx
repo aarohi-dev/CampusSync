@@ -17,8 +17,14 @@ const Dashboard = () => {
       navigate('/login');
       return;
     }
+
+    if(user.role === 'ADMIN'){
+      navigate('/admin');
+      return
+    }
+
     fetchData();
-  }, [user.id, navigate]);
+  }, [user.id, user.role, navigate]);
 
   const fetchData = async () => {
     setLoading(true);
