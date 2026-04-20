@@ -63,11 +63,16 @@ class AuthController {
       // Create user
       const userId = await UserModel.create(name, email, hashedPassword, roleId);
 
-      // Log action
-      await AuditLogModel.create('USER_REGISTRATION', userId, null, null, {
-        email,
-        role: roleToRegister,
-      });
+      // Log action (non-blocking)
+      try {
+        await AuditLogModel.create('USER_REGISTRATION', userId, null, null, {
+          email,
+          role: roleToRegister,
+        });
+      } catch (auditError) {
+        console.error('Audit log creation failed:', auditError.message);
+        // Continue - registration should not fail if audit logging fails
+      }
 
       return res.status(201).json({
         success: true,
@@ -134,10 +139,15 @@ class AuthController {
         { expiresIn: process.env.JWT_EXPIRE || '7d' }
       );
 
-      // Log action
-      await AuditLogModel.create('USER_LOGIN', user.id, null, null, {
-        email,
-      });
+      // Log action (non-blocking)
+      try {
+        await AuditLogModel.create('USER_LOGIN', user.id, null, null, {
+          email,
+        });
+      } catch (auditError) {
+        console.error('Audit log creation failed:', auditError.message);
+        // Continue - login should not fail if audit logging fails
+      }
 
       return res.status(200).json({
         success: true,

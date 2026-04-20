@@ -1,45 +1,139 @@
 -- Campus Sync Resource Booking System - MySQL Schema
 -- Database for managing campus resource bookings
+-- NORMALIZED TO 3NF
 
 CREATE DATABASE IF NOT EXISTS campus_sync;
 USE campus_sync;
 
--- 1. Roles Table
+-- ================================================================================
+-- NORMALIZATION EXPLANATION
+-- ================================================================================
+-- 1. ROLES TABLE - Already normalized (1NF, 2NF, 3NF)
+--    - Single atomic values
+--    - Unique identifier (id)
+--    - No partial dependencies
+--
+-- 2. RESOURCE_TYPES TABLE (NEW) - Extracted from ENUM (1NF, 2NF, 3NF)
+--    - Problem: ENUM in resources table violates 1NF (not a separate entity)
+--    - Solution: Create lookup table with surrogate key
+--
+-- 3. LOCATIONS TABLE (NEW) - Extracted from resources (1NF, 2NF, 3NF)
+--    - Problem: Location is a composite attribute that could be shared
+--    - Solution: Separate table for reusable location data
+--
+-- 4. AUDIT_ACTION_TYPES TABLE (NEW) - Extracted from action string (1NF, 2NF, 3NF)
+--    - Problem: Action is stored as string, not normalized
+--    - Solution: Create lookup table for valid action types
+--
+-- 5. USERS TABLE - Minor update (already normalized)
+--    - Remove password hash from main table (option for future security)
+--    - Keep FK to roles
+--
+-- 6. RESOURCES TABLE - Normalized (1NF, 2NF, 3NF)
+--    - Replace ENUM type with FK to resource_types
+--    - Replace location string with FK to locations
+--    - All attributes dependent on resource_id
+--
+-- 7. BOOKINGS TABLE - Normalized (1NF, 2NF, 3NF)
+--    - Replace ENUM status with FK to booking_statuses
+--    - Add status_id FK instead of string
+--    - All attributes dependent on booking_id
+--
+-- 8. AUDIT_LOGS TABLE - Normalized (1NF, 2NF, 3NF)
+--    - Replace action string with FK to audit_action_types
+--    - All attributes dependent on audit_log_id
+-- ================================================================================
+
+-- 1. Roles Table (Already normalized)
 CREATE TABLE roles (
   id INT PRIMARY KEY AUTO_INCREMENT,
   role_name VARCHAR(50) NOT NULL UNIQUE,
+  description VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Users Table
+-- 2. Resource Types Table (NEW - 1NF: Eliminate ENUM)
+CREATE TABLE resource_types (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  type_name VARCHAR(50) NOT NULL UNIQUE,
+  description VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Locations Table (NEW - 1NF: Separate entity)
+CREATE TABLE locations (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  building_name VARCHAR(100) NOT NULL,
+  floor INT,
+  room_number VARCHAR(20),
+  description VARCHAR(255),
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_location (building_name, floor, room_number),
+  INDEX idx_building (building_name)
+);
+
+-- 4. Booking Statuses Table (NEW - 1NF: Eliminate ENUM)
+CREATE TABLE booking_statuses (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  status_name VARCHAR(50) NOT NULL UNIQUE,
+  description VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Audit Action Types Table (NEW - 1NF: Normalize action strings)
+CREATE TABLE audit_action_types (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  action_type VARCHAR(100) NOT NULL UNIQUE,
+  description VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Users Table (Updated - 2NF/3NF: FK to roles)
 CREATE TABLE users (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   role_id INT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT,
   INDEX idx_email (email),
-  INDEX idx_role_id (role_id)
+  INDEX idx_role_id (role_id),
+  INDEX idx_is_active (is_active)
 );
 
--- 3. Resources Table
+-- 7. Resources Table (Updated - 1NF/2NF/3NF)
+--    - Replaced ENUM type with FK to resource_types
+--    - Replaced location string with FK to locations
 CREATE TABLE resources (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(100) NOT NULL,
-  type ENUM('lab', 'seminar_hall', 'projector') NOT NULL,
-  location VARCHAR(255) NOT NULL,
+  resource_type_id INT NOT NULL,
+  location_id INT NOT NULL,
   capacity INT NOT NULL DEFAULT 1,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_type (type),
+  FOREIGN KEY (resource_type_id) REFERENCES resource_types(id) ON DELETE RESTRICT,
+  FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE RESTRICT,
+  INDEX idx_resource_type_id (resource_type_id),
+  INDEX idx_location_id (location_id),
   INDEX idx_is_active (is_active)
 );
 
--- 4. Bookings Table
+-- 8. Booking Statuses Lookup (insert default statuses)
+CREATE TABLE booking_statuses_lookup (
+  id INT PRIMARY KEY,
+  status_name VARCHAR(50) NOT NULL UNIQUE,
+  description VARCHAR(255)
+);
+
+-- 9. Bookings Table (Updated - 1NF/2NF/3NF)
+--    - Replaced ENUM status with FK to booking_statuses
 CREATE TABLE bookings (
   id INT PRIMARY KEY AUTO_INCREMENT,
   user_id INT NOT NULL,
@@ -47,51 +141,62 @@ CREATE TABLE bookings (
   booking_date DATE NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
-  status ENUM('PENDING', 'APPROVED', 'REJECTED') DEFAULT 'PENDING',
+  status_id INT NOT NULL,
   rejection_reason VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE RESTRICT,
-  INDEX idx_user_id (user_id),   -- foreign key
-  INDEX idx_resource_id (resource_id),    -- foreign key
-  INDEX idx_status (status),
+  FOREIGN KEY (status_id) REFERENCES booking_statuses(id) ON DELETE RESTRICT,
+  INDEX idx_user_id (user_id),
+  INDEX idx_resource_id (resource_id),
+  INDEX idx_status_id (status_id),
   INDEX idx_date (booking_date),
-  INDEX idx_resource_date (resource_id, booking_date, status),
+  INDEX idx_resource_date (resource_id, booking_date, status_id),
   CONSTRAINT check_time CHECK (start_time < end_time)
 );
 
--- 5. Audit Logs Table
+-- 10. Audit Logs Table (Updated - 1NF/2NF/3NF)
+--     - Replaced action string with FK to audit_action_types
 CREATE TABLE audit_logs (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  action VARCHAR(255) NOT NULL,
+  action_type_id INT NOT NULL,
   user_id INT NOT NULL,
   resource_id INT,
   booking_id INT,
   action_details JSON,
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (action_type_id) REFERENCES audit_action_types(id) ON DELETE RESTRICT,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE SET NULL,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
+  INDEX idx_action_type_id (action_type_id),
   INDEX idx_user_id (user_id),
   INDEX idx_timestamp (timestamp)
 );
 
--- create unique constraint to prevent duplicate APPROVED bookings for same resource, date, and overlapping times
--- this is enforced through application logic, but we create a trigger for extra safety
+-- ================================================================================
+-- TRIGGER: PREVENT OVERLAPPING BOOKINGS (Updated for normalized schema)
+-- ================================================================================
+-- Prevent duplicate APPROVED bookings for same resource, date, and overlapping times
+-- This is enforced through application logic, but trigger adds database-level safety
 DELIMITER //
 
 CREATE TRIGGER check_booking_overlap BEFORE INSERT ON bookings
 FOR EACH ROW
 BEGIN
   DECLARE overlap_count INT;
+  DECLARE approved_status_id INT;
+  
+  -- Get the ID for 'APPROVED' status (status_id = 2 by default)
+  SELECT id INTO approved_status_id FROM booking_statuses WHERE status_name = 'APPROVED' LIMIT 1;
   
   -- Check if there's an overlapping APPROVED booking
   SELECT COUNT(*) INTO overlap_count
   FROM bookings
   WHERE resource_id = NEW.resource_id
     AND booking_date = NEW.booking_date
-    AND status = 'APPROVED'
+    AND status_id = approved_status_id
     AND (
       (NEW.start_time < end_time AND NEW.end_time > start_time)
     );
@@ -101,10 +206,101 @@ BEGIN
   END IF;
 END //
 
-DELIMITER ;
+DELIMITER;
 
 -- ================================================================================
--- 5.3.1 TRANSACTION EXAMPLES FOR CAMPUS SYNC WORKFLOW
+-- CONCURRENCY CONTROL: RESOURCE LOCKS TABLE
+-- ================================================================================
+-- Tracks active locks on resources to prevent concurrent modifications
+-- Used for pessimistic locking strategy
+CREATE TABLE resource_locks (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  resource_id INT NOT NULL,
+  user_id INT NOT NULL,
+  lock_type ENUM('READ', 'WRITE') NOT NULL,
+  acquired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP NOT NULL,
+  session_id VARCHAR(100),
+  FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_resource_id (resource_id),
+  INDEX idx_expires_at (expires_at),
+  INDEX idx_session_id (session_id)
+);
+ 
+-- ================================================================================
+-- CONCURRENCY CONTROL: DEADLOCK LOG TABLE
+-- ================================================================================
+-- Logs deadlock occurrences for monitoring and analysis
+CREATE TABLE deadlock_logs (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT,
+  resource_id INT,
+  booking_id INT,
+  operation VARCHAR(100),
+  retry_count INT DEFAULT 0,
+  error_message TEXT,
+  detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE SET NULL,
+  FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
+  INDEX idx_detected_at (detected_at),
+  INDEX idx_user_id (user_id)
+);
+ 
+-- ================================================================================
+-- TRIGGER: PREVENT OVERLAPPING BOOKINGS (Updated for normalized schema)
+-- ================================================================================
+-- Prevent duplicate APPROVED bookings for same resource, date, and overlapping times
+-- This is enforced through application logic, but trigger adds database-level safety
+DELIMITER //
+ 
+CREATE TRIGGER check_booking_overlap BEFORE INSERT ON bookings
+FOR EACH ROW
+BEGIN
+  DECLARE overlap_count INT;
+  DECLARE approved_status_id INT;
+  
+  -- Get the ID for 'APPROVED' status (status_id = 2 by default)
+  SELECT id INTO approved_status_id FROM booking_statuses WHERE status_name = 'APPROVED' LIMIT 1;
+  
+  -- Check if there's an overlapping APPROVED booking
+  SELECT COUNT(*) INTO overlap_count
+  FROM bookings
+  WHERE resource_id = NEW.resource_id
+    AND booking_date = NEW.booking_date
+    AND status_id = approved_status_id
+    AND (
+      (NEW.start_time < end_time AND NEW.end_time > start_time)
+    );
+  
+  IF overlap_count > 0 THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Resource already booked for this time slot';
+  END IF;
+END //
+ 
+DELIMITER ;
+ 
+-- ================================================================================
+-- CONCURRENCY CONTROL: AUTO-INCREMENT VERSION ON UPDATE TRIGGER
+-- ================================================================================
+-- Automatically increment version column when booking is updated
+DELIMITER //
+ 
+CREATE TRIGGER increment_booking_version BEFORE UPDATE ON bookings
+FOR EACH ROW
+BEGIN
+  SET NEW.version = OLD.version + 1;
+END //
+ 
+CREATE TRIGGER increment_resource_version BEFORE UPDATE ON resources
+FOR EACH ROW
+BEGIN
+  SET NEW.version = OLD.version + 1;
+END //
+ 
+DELIMITER ;
+
 -- ================================================================================
 -- These transactions demonstrate ACID properties with SAVEPOINT, COMMIT, and ROLLBACK
 -- They implement real-world scenarios from the Campus Sync booking system
